@@ -49,10 +49,10 @@ export default function GhanaCardScanner() {
   const [submitEnabled, setSubmitEnabled] = useState(false);
 
   // Model parameters
-  const confidenceThreshold = 0.5;
-  const minConsecutiveDetections = 3;
-  const minDetectionAreaRatio = 0.02;
-  const maxDetectionAreaRatio = 0.8;
+  const confidenceThreshold = 0.7;
+  const minConsecutiveDetections = 5;
+  const minDetectionAreaRatio = 0.40;
+  const maxDetectionAreaRatio = 0.90;
 
   // Notify parent window when component mounts
   useEffect(() => {
@@ -340,9 +340,9 @@ export default function GhanaCardScanner() {
       areaRatio < maxDetectionAreaRatio;
 
     if (!isValidCard) {
-      console.log("[Smart-Capture] Invalid card detected for auto-capture");
+      console.log("[Smart-Capture] Card is invalid or far away");
       setInvalidCardDetected(true);
-      setStatus("Invalid card detected - Please use a Ghana Card");
+      setStatus("Card may be too far - Please move closer to the camera");
       setConsecutiveDetections(0);
       return;
     }
