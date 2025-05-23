@@ -1,4 +1,5 @@
-//smart-capture/src/app/utilities/captureUtilities.js
+//src/utilities/captureUtilities.js - Mobile-Optimized Version
+
 export const captureCard = (
   detection,
   videoRef,
@@ -7,22 +8,29 @@ export const captureCard = (
   setCaptureMessage,
   setSubmitEnabled
 ) => {
-  console.log("[Smart-Capture] Starting high-quality card capture process...");
+  console.log("[Smart-Capture] Starting mobile-optimized card capture process...");
   const { box } = detection;
   const video = videoRef.current;
   const canvas = captureRef.current;
   const context = canvas.getContext("2d", { willReadFrequently: true, alpha: false });
 
-  // Increase the output resolution significantly for better OCR
-  const outputWidth = 1920; // Increased from 1280 for higher detail
+  // Detect if we're on mobile for different quality settings
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  ) || (typeof window !== 'undefined' && window.innerWidth < 768);
+
+  // Adaptive output resolution based on device capabilities
+  const outputWidth = isMobile ? 1280 : 1920; // Reduced for mobile performance
   const outputHeight = Math.round(outputWidth / 1.585); // Ghana Card aspect ratio
 
-  // Set canvas to higher resolution
+  console.log(`[Smart-Capture] Using ${isMobile ? 'mobile' : 'desktop'} capture settings: ${outputWidth}x${outputHeight}`);
+
+  // Set canvas to optimized resolution
   canvas.width = outputWidth;
   canvas.height = outputHeight;
 
-  // Calculate crop area with more precise margins
-  const margin = 0.05; // Increased from 0.03 to ensure full card is captured
+  // Calculate crop area with device-appropriate margins
+  const margin = isMobile ? 0.03 : 0.05; // Smaller margin for mobile to capture more detail
   const marginX = box.width * margin;
   const marginY = (box.width / 1.585) * margin;
 
@@ -34,59 +42,112 @@ export const captureCard = (
     video.videoHeight - cropY
   );
 
-  // Clear the canvas first to prevent ghosting
+  // Clear canvas with white background
   context.fillStyle = "#FFFFFF";
   context.fillRect(0, 0, outputWidth, outputHeight);
 
-  // Enable image smoothing for better quality
+  // Configure image smoothing for quality
   context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
+  context.imageSmoothingQuality = isMobile ? "medium" : "high"; // Balanced quality for mobile
 
-  // Draw the captured image with high quality settings
+  // Draw the captured image
   context.drawImage(
     video,
     cropX,
     cropY,
     cropWidth,
-    cropHeight, // source rectangle
+    cropHeight,
     0,
     0,
     outputWidth,
-    outputHeight // destination rectangle
+    outputHeight
   );
 
-  // Apply professional unsharp mask for OCR-optimal sharpening
-  applyUnsharpMaskForOCR(canvas, context);
-
-  console.log("[Smart-Capture] High-quality card captured successfully");
-  setStatus("High-quality card captured successfully.");
-  setCaptureMessage("Card captured successfully.");
-  setSubmitEnabled(true);
-
-  // Automatically submit if in iframe context
-  if (window.self !== window.top) {
-    console.log("[Smart-Capture] In iframe context, auto-submitting...");
-    setTimeout(() => {
-      const event = new Event("click");
-      document.querySelector(".send-btn")?.dispatchEvent(event);
-    }, 1000);
+  // Apply appropriate image enhancement based on device
+  if (isMobile) {
+    applyMobileOptimizedEnhancement(canvas, context);
+  } else {
+    applyUnsharpMaskForOCR(canvas, context);
   }
+
+  console.log("[Smart-Capture] Card captured and enhanced successfully");
+  setStatus("Card captured successfully!");
+  setCaptureMessage("High-quality card captured");
+  setSubmitEnabled(true);
 
   return { canvas, context };
 };
 
-// Professional Unsharp Mask implementation optimized for document OCR
-const applyUnsharpMaskForOCR = (canvas, ctx) => {
-  console.log("[Smart-Capture] Applying professional unsharp mask for OCR optimization");
+// Mobile-optimized image enhancement (faster processing)
+const applyMobileOptimizedEnhancement = (canvas, ctx) => {
+  console.log("[Smart-Capture] Applying mobile-optimized enhancement");
   
-  // Step 1: Get image data
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
   
-  // Step 2: Convert to YUV to separate luminance from color information
+  // Simple but effective contrast and sharpness enhancement for mobile
+  for (let i = 0; i < data.length; i += 4) {
+    // Enhance contrast (simpler than full unsharp mask)
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    
+    // Apply contrast curve optimized for document text
+    data[i] = Math.min(255, Math.max(0, (r - 128) * 1.2 + 128));
+    data[i + 1] = Math.min(255, Math.max(0, (g - 128) * 1.2 + 128));
+    data[i + 2] = Math.min(255, Math.max(0, (b - 128) * 1.2 + 128));
+  }
+  
+  // Apply basic sharpening filter (3x3 kernel)
+  applySimpleSharpening(data, canvas.width, canvas.height);
+  
+  ctx.putImageData(imageData, 0, 0);
+  console.log("[Smart-Capture] Mobile enhancement applied successfully");
+};
+
+// Simple sharpening filter for mobile performance
+const applySimpleSharpening = (data, width, height, amount = 0.3) => {
+  const original = new Uint8ClampedArray(data);
+  
+  // Simple 3x3 sharpening kernel
+  const kernel = [
+    0, -1, 0,
+    -1, 5, -1,
+    0, -1, 0
+  ];
+  
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      for (let c = 0; c < 3; c++) { // RGB channels only
+        let sum = 0;
+        
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const pixelIndex = ((y + ky) * width + (x + kx)) * 4 + c;
+            const kernelIndex = (ky + 1) * 3 + (kx + 1);
+            sum += original[pixelIndex] * kernel[kernelIndex];
+          }
+        }
+        
+        const currentIndex = (y * width + x) * 4 + c;
+        const enhanced = original[currentIndex] + (sum - original[currentIndex]) * amount;
+        data[currentIndex] = Math.min(255, Math.max(0, enhanced));
+      }
+    }
+  }
+};
+
+// Full unsharp mask for desktop (professional OCR optimization)
+const applyUnsharpMaskForOCR = (canvas, ctx) => {
+  console.log("[Smart-Capture] Applying professional unsharp mask for OCR optimization");
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  
+  // Convert to YUV colorspace to separate luminance from chrominance
   const yuv = convertRGBtoYUV(data, canvas.width, canvas.height);
   
-  // Step 3: Apply unsharp mask to luminance channel only (better for OCR)
+  // Apply unsharp mask to luminance channel only (better for OCR)
   applyUnsharpMask(
     yuv.y, 
     canvas.width, 
@@ -96,15 +157,13 @@ const applyUnsharpMaskForOCR = (canvas, ctx) => {
     5      // Threshold: 5 prevents noise amplification in solid areas
   );
   
-  // Step 4: Convert back to RGB colorspace
+  // Convert back to RGB colorspace
   convertYUVtoRGB(yuv, data, canvas.width, canvas.height);
   
-  // Step 5: Apply subtle level adjustment for better OCR contrast
+  // Apply subtle level adjustment for better OCR contrast
   applyLevelsAdjustment(data, 10, 245);
   
-  // Apply the enhanced image data back to the canvas
   ctx.putImageData(imageData, 0, 0);
-  
   console.log("[Smart-Capture] Unsharp mask applied successfully for OCR optimization");
 };
 
@@ -120,7 +179,7 @@ const convertRGBtoYUV = (data, width, height) => {
     const g = data[i + 1];
     const b = data[i + 2];
     
-    // Standard RGB to YUV conversion formula
+    // Standard RGB to YUV conversion formula (ITU-R BT.601)
     y[j] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
     u[j] = Math.round(-0.14713 * r - 0.28886 * g + 0.436 * b + 128);
     v[j] = Math.round(0.615 * r - 0.51499 * g - 0.10001 * b + 128);
@@ -138,7 +197,7 @@ const convertYUVtoRGB = (yuv, data, width, height) => {
     const uVal = u[j] - 128;
     const vVal = v[j] - 128;
     
-    // Standard YUV to RGB conversion formula
+    // Standard YUV to RGB conversion formula (ITU-R BT.601)
     data[i] = Math.max(0, Math.min(255, Math.round(yVal + 1.13983 * vVal)));
     data[i + 1] = Math.max(0, Math.min(255, Math.round(yVal - 0.39465 * uVal - 0.58060 * vVal)));
     data[i + 2] = Math.max(0, Math.min(255, Math.round(yVal + 2.03211 * uVal)));
@@ -146,7 +205,7 @@ const convertYUVtoRGB = (yuv, data, width, height) => {
   }
 };
 
-// Apply unsharp mask algorithm (industry standard sharpening)
+// Apply unsharp mask algorithm (industry standard sharpening technique)
 const applyUnsharpMask = (channel, width, height, amount, radius, threshold) => {
   // Step 1: Create a copy of the original channel
   const original = new Uint8ClampedArray(channel.length);
@@ -172,7 +231,7 @@ const applyUnsharpMask = (channel, width, height, amount, radius, threshold) => 
   }
 };
 
-// Apply Gaussian blur (used by unsharp mask)
+// Apply Gaussian blur using separable convolution (much faster than 2D convolution)
 const applyGaussianBlur = (channel, width, height, radius) => {
   // Convert radius to sigma (standard deviation)
   const sigma = radius * 3.0;
@@ -182,7 +241,6 @@ const applyGaussianBlur = (channel, width, height, radius) => {
   const kernel = createGaussianKernel(kernelSize, sigma);
   
   // For efficiency, blur separately in horizontal and vertical directions
-  // (separable convolution - much faster than 2D convolution)
   const tempChannel = new Uint8ClampedArray(channel.length);
   
   // Apply horizontal blur
@@ -198,7 +256,7 @@ const createGaussianKernel = (size, sigma) => {
   const halfSize = Math.floor(size / 2);
   let sum = 0;
   
-  // Calculate Gaussian values
+  // Calculate Gaussian values using the Gaussian function
   for (let i = 0; i < size; i++) {
     const x = i - halfSize;
     // Gaussian function: exp(-x² / (2σ²))
@@ -243,7 +301,7 @@ const applyGaussianPass = (src, dst, width, height, kernel, kernelSize, horizont
   }
 };
 
-// Apply levels adjustment for better contrast
+// Apply levels adjustment for better contrast (similar to Photoshop levels)
 const applyLevelsAdjustment = (data, blackPoint, whitePoint) => {
   const range = whitePoint - blackPoint;
   if (range === 0) return; // Avoid division by zero
@@ -267,13 +325,13 @@ const applyLevelsAdjustment = (data, blackPoint, whitePoint) => {
   }
 };
 
-// Convert to grayscale (optional, can be used if OCR works better with grayscale)
+// Convert to grayscale (utility function for OCR optimization)
 export const convertToGrayscale = (canvas, ctx) => {
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
   
   for (let i = 0; i < data.length; i += 4) {
-    // Weighted grayscale conversion (matches human perception)
+    // Weighted grayscale conversion (matches human perception - ITU-R BT.709)
     const gray = Math.round(data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114);
     data[i] = gray;     // Red
     data[i+1] = gray;   // Green

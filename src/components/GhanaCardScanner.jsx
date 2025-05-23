@@ -9,6 +9,18 @@ import Image from "next/image";
 import Link from "next/link";
 import "../style/style.css";
 
+// Helper function to detect mobile devices
+function isMobileDevice() {
+  const hasWindow = typeof window !== 'undefined';
+  const hasNavigator = typeof navigator !== 'undefined';
+
+  const hasTouchEvents = hasWindow && ('ontouchstart' in window || (hasNavigator && navigator.maxTouchPoints > 0));
+  const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+  const isMobileUserAgent = hasNavigator && mobileRegex.test(navigator.userAgent);
+
+  return hasTouchEvents || isMobileUserAgent;
+}
+
 export default function GhanaCardScanner() {
   console.log("[Smart-Capture] Initializing GhanaCardScanner component");
 
@@ -18,9 +30,7 @@ export default function GhanaCardScanner() {
   const verification_type = searchParams.get("verification_type");
 
   console.log(`[Smart-Capture] Received verification_id: ${verification_id}`);
-  console.log(
-    `[Smart-Capture] Received verification_type: ${verification_type}`
-  );
+  console.log(`[Smart-Capture] Received verification_type: ${verification_type}`);
 
   // Camera, Video and Canvas Refs
   const videoRef = useRef(null);
@@ -42,30 +52,91 @@ export default function GhanaCardScanner() {
   const [modelStatus, setModelStatus] = useState("Initializing");
   const [cameraStatus, setCameraStatus] = useState(false);
   const [invalidCardDetected, setInvalidCardDetected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Capture and Detection States
   const [captureMessage, setCaptureMessage] = useState("No card captured yet");
   const [consecutiveDetections, setConsecutiveDetections] = useState(0);
   const [submitEnabled, setSubmitEnabled] = useState(false);
 
-  // Model parameters
-  const confidenceThreshold = 0.7;
-  const minConsecutiveDetections = 5;
-  const minDetectionAreaRatio = 0.40;
-  const maxDetectionAreaRatio = 0.90;
+  // Mobile-specific states
+  const [isMobile, setIsMobile] = useState(false);
+  const [orientation, setOrientation] = useState('portrait');
+
+  // Model parameters - adjusted for better mobile performance
+  const confidenceThreshold = isMobile ? 0.6 : 0.7;
+  const minConsecutiveDetections = isMobile ? 3 : 5;
+  const minDetectionAreaRatio = isMobile ? 0.3 : 0.4;
+  const maxDetectionAreaRatio = 0.9;
+
+  // Mobile detection and orientation handling
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = isMobileDevice();
+      setIsMobile(mobile);
+      if (typeof window !== 'undefined') {
+        setOrientation(window.innerHeight > window.innerWidth ? 'portrait' : 'landscape');
+      }
+    };
+
+    const handleResize = () => {
+      checkMobile();
+      // Adjust video container on orientation change
+      if (videoRef.current && canvasRef.current) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        setTimeout(() => {
+          if (video.videoWidth && video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+        }, 100);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      checkMobile();
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('orientationchange', handleResize);
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('orientationchange', handleResize);
+      };
+    }
+  }, []);
+
+  // Prevent zoom on mobile
+  useEffect(() => {
+    if (isMobile && typeof document !== 'undefined') {
+      const preventDefault = (e) => {
+        if (e.touches && e.touches.length > 1) {
+          e.preventDefault();
+        }
+      };
+
+      document.addEventListener('touchstart', preventDefault, { passive: false });
+      document.addEventListener('touchmove', preventDefault, { passive: false });
+
+      return () => {
+        document.removeEventListener('touchstart', preventDefault);
+        document.removeEventListener('touchmove', preventDefault);
+      };
+    }
+  }, [isMobile]);
 
   // Notify parent window when component mounts
   useEffect(() => {
-    console.log(
-      "[Smart-Capture] Notifying parent window that scanner is ready"
-    );
-    window.parent.postMessage(
-      {
-        type: "GHANA_CARD_SCANNER_READY",
-        data: { verification_id, verification_type },
-      },
-      "*"
-    );
+    console.log("[Smart-Capture] Notifying parent window that scanner is ready");
+    if (typeof window !== 'undefined' && window.parent) {
+      window.parent.postMessage(
+        {
+          type: "GHANA_CARD_SCANNER_READY",
+          data: { verification_id, verification_type },
+        },
+        "*"
+      );
+    }
 
     return () => {
       console.log("[Smart-Capture] Component unmounting, cleaning up...");
@@ -78,49 +149,72 @@ export default function GhanaCardScanner() {
     console.log("[Smart-Capture] Initializing TensorFlow.js...");
     const init = async () => {
       setStatus("Checking TensorFlow.js...");
-      if (!window.tf || !window.tflite) {
+      if (typeof window === 'undefined' || !window.tf || !window.tflite) {
         console.error("[Smart-Capture] TensorFlow.js or TFLite not found");
         setStatus("TensorFlow.js or TFLite not found");
+        setIsLoading(false);
         return;
       }
 
-      console.log(
-        "[Smart-Capture] TensorFlow.js detected, waiting for ready state..."
-      );
+      console.log("[Smart-Capture] TensorFlow.js detected, waiting for ready state...");
       await tf.ready();
       setStatus("Loading model...");
       console.log("[Smart-Capture] TensorFlow.js ready, loading model...");
 
       try {
-        console.log(
-          "[Smart-Capture] Loading TFLite model from /model/autocapture.tflite"
-        );
-        const loadedModel = await tflite.loadTFLiteModel(
-          "/model/autocapture.tflite"
-        );
+        console.log("[Smart-Capture] Loading TFLite model from /model/autocapture.tflite");
+        const loadedModel = await tflite.loadTFLiteModel("/model/autocapture.tflite");
         modelRef.current = loadedModel;
 
         console.log("[Smart-Capture] Model loaded successfully");
         setStatus("Model loaded successfully");
-        setModelStatus(
-          "Model loaded: YOLOv8 TFLite (model/autocapture.tflite)"
-        );
+        setModelStatus("Model loaded: YOLOv8 TFLite (model/autocapture.tflite)");
 
         await startCamera();
+        setIsLoading(false);
       } catch (err) {
         console.error("[Smart-Capture] Error loading model:", err);
         setStatus("Error loading model: " + err.message);
+        setIsLoading(false);
       }
     };
     init();
   }, []);
 
-  // Function to start the camera
+  // Function to start the camera with mobile-optimized constraints
   const startCamera = async () => {
     console.log("[Smart-Capture] Attempting to start camera...");
+    
+    const runningOnMobile = isMobile;
+    console.log(`[Smart-Capture] Is mobile device: ${runningOnMobile}`);
+
+    let dynamicConstraints;
+
+    if (runningOnMobile) {
+      console.log("[Smart-Capture] Applying mobile-specific camera constraints");
+      dynamicConstraints = {
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          aspectRatio: { ideal: 16 / 9 },
+          frameRate: { ideal: 24, max: 30 }
+        },
+      };
+    } else {
+      console.log("[Smart-Capture] Applying desktop camera constraints");
+      dynamicConstraints = {
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30 }
+        },
+      };
+    }
+
     try {
-      // Log available devices (for debugging)
-      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoDevices = devices.filter(device => device.kind === 'videoinput');
@@ -131,90 +225,140 @@ export default function GhanaCardScanner() {
         } catch (err) {
           console.error('[Smart-Capture] Error enumerating devices:', err);
         }
-      } else {
-        console.warn('[Smart-Capture] enumerateDevices is not supported in this browser.');
       }
 
       setStatus("Requesting camera access...");
-      const constraints = {
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      };
+      console.log("[Smart-Capture] Requesting media stream with constraints:", dynamicConstraints);
+      
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        setStatus("Camera API not available in this environment.");
+        console.error("[Smart-Capture] getUserMedia not available.");
+        return;
+      }
 
-      console.log( // Log the constraints being used
-        "[Smart-Capture] Requesting media stream with constraints:",
-        constraints
-      );
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(dynamicConstraints);
 
       const video = videoRef.current;
+      if (!video) {
+        console.error("[Smart-Capture] Video ref not available after getUserMedia.");
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      
       video.srcObject = stream;
 
-      await new Promise((resolve) => {
+      await new Promise((resolve, reject) => {
+        if (!video) {
+          reject(new Error("Video element became unavailable during metadata load setup."));
+          return;
+        }
+        
         video.onloadedmetadata = () => {
           console.log(
             "[Smart-Capture] Video metadata loaded, dimensions:",
-            video.videoWidth,
-            "x",
-            video.videoHeight
+            video.videoWidth, "x", video.videoHeight
           );
-          video.play();
-          resolve();
+          
+          video.play().then(() => {
+            resolve();
+          }).catch(playError => {
+            console.error("[Smart-Capture] Error playing video:", playError);
+            setStatus("Error playing video. Please check browser permissions.");
+            reject(playError);
+          });
+        };
+        
+        video.onerror = (err) => {
+          console.error("[Smart-Capture] Video element error:", err);
+          setStatus("Error with video element.");
+          reject(err);
         };
       });
 
       const canvas = canvasRef.current;
+      if (!canvas || !video.videoWidth || !video.videoHeight) {
+        console.error("[Smart-Capture] Canvas or video dimensions not ready.");
+        setStatus("Error setting up display canvas.");
+        return;
+      }
+      
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      console.log(
-        "[Smart-Capture] Canvas dimensions set to:",
-        canvas.width,
-        "x",
-        canvas.height
-      );
+      
+      console.log("[Smart-Capture] Canvas dimensions set to:", canvas.width, "x", canvas.height);
 
       cameraRef.current = stream;
       setCameraStatus(true);
-
-      console.log("[Smart-Capture] Camera started successfully");
       setStatus("Camera active. Position a Ghana Card in the frame.");
-
       isDetectionActiveRef.current = true;
       startDetectionLoop();
     } catch (err) {
       console.error("[Smart-Capture] Error starting camera:", err);
-      setStatus("Error starting camera: " + err.message);
+      
+      let errorMessage = err.message;
+      if (err.name === "NotAllowedError") {
+        errorMessage = "Camera permission denied. Please allow camera access.";
+      } else if (err.name === "NotFoundError") {
+        errorMessage = "No camera found. Please check your device.";
+      } else if (err.name === "OverconstrainedError") {
+        errorMessage = "Camera settings not supported. Trying with basic settings...";
+        
+        // Fallback to basic constraints
+        try {
+          const basicConstraints = { video: { facingMode: "environment" } };
+          const stream = await navigator.mediaDevices.getUserMedia(basicConstraints);
+          const video = videoRef.current;
+          if (video) {
+            video.srcObject = stream;
+            await new Promise((resolve) => {
+              video.onloadedmetadata = () => {
+                video.play();
+                resolve();
+              };
+            });
+            
+            const canvas = canvasRef.current;
+            if (canvas) {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+            }
+            
+            cameraRef.current = stream;
+            setCameraStatus(true);
+            setStatus("Camera active with basic settings. Position a Ghana Card in the frame.");
+            isDetectionActiveRef.current = true;
+            startDetectionLoop();
+            return;
+          }
+        } catch (fallbackErr) {
+          console.error("[Smart-Capture] Fallback camera start failed:", fallbackErr);
+          errorMessage = "Unable to start camera with any settings.";
+        }
+      }
+      
+      setStatus("Error starting camera: " + errorMessage);
     }
   };
 
-  // Function to stop the camera
   const stopCamera = () => {
     console.log("[Smart-Capture] Stopping camera...");
     const stream = videoRef.current?.srcObject;
 
-    if (stream) {
-      console.log("[Smart-Capture] Stopping all media tracks");
-      stream.getTracks().forEach((track) => {
-        console.log("[Smart-Capture] Stopping track:", track.kind);
-        track.stop();
-      });
+    if (stream && typeof stream.getTracks === 'function') {
+      stream.getTracks().forEach((track) => track.stop());
       if (videoRef.current) videoRef.current.srcObject = null;
       setCameraStatus(false);
       setStatus("Camera stopped.");
     }
 
     if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext("2d");
-        const canvas = canvasRef.current;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const ctx = canvasRef.current.getContext("2d");
+      if (canvasRef.current.width > 0 && canvasRef.current.height > 0) {
+        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
     }
 
-
     if (animationFrameRef.current) {
-      console.log("[Smart-Capture] Cancelling animation frame");
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
@@ -225,64 +369,43 @@ export default function GhanaCardScanner() {
     console.log("[Smart-Capture] Camera stopped and resources cleaned up");
   };
 
-  // Function to start the detection loop
   const startDetectionLoop = () => {
-    if (!isDetectionActiveRef.current) {
-      console.log("[Smart-Capture] Detection loop inactive, exiting");
-      return;
-    }
+    if (!isDetectionActiveRef.current) return;
 
     if (
-      !videoRef.current ||
-      !canvasRef.current ||
-      !cameraRef.current ||
-      !modelRef.current
-    ) {
-      console.log("[Smart-Capture] Waiting for required refs to be ready for detection loop...");
-      animationFrameRef.current = requestAnimationFrame(startDetectionLoop);
-      return;
-    }
-
-    if (
-      videoRef.current.videoWidth === 0 ||
-      videoRef.current.videoHeight === 0 ||
+      !videoRef.current || videoRef.current.paused || videoRef.current.ended ||
+      !canvasRef.current || !cameraRef.current || !modelRef.current ||
+      videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0 ||
       videoRef.current.readyState < 2
     ) {
-      console.log("[Smart-Capture] Waiting for valid video dimensions or readyState...");
       animationFrameRef.current = requestAnimationFrame(startDetectionLoop);
       return;
     }
 
     if (!processingRef.current) {
-      try {
-        detectCard();
-      } catch (error) {
-        console.error("[Smart-Capture] Detection error in loop:", error);
-        setStatus("Error during card detection: " + error.message);
-      }
+      detectCard().catch(error => {
+        console.error("[Smart-Capture] Error in detectCard:", error);
+        setStatus("Detection error. Please refresh if issues persist.");
+      });
     }
 
-    animationFrameRef.current = requestAnimationFrame(startDetectionLoop);
+    if (isDetectionActiveRef.current) {
+      animationFrameRef.current = requestAnimationFrame(startDetectionLoop);
+    }
   };
 
-  // Function to detect card
   const detectCard = async () => {
     if (
-      !videoRef.current ||
-      !canvasRef.current ||
-      !cameraRef.current ||
-      !modelRef.current ||
-      videoRef.current.videoWidth === 0 ||
-      videoRef.current.videoHeight === 0 ||
+      !videoRef.current || videoRef.current.paused || videoRef.current.ended ||
+      !canvasRef.current || !modelRef.current ||
+      videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0 ||
       videoRef.current.readyState < 2
     ) {
+      processingRef.current = false;
       return;
     }
 
-    if (processingRef.current) {
-      return;
-    }
-
+    if (processingRef.current) return;
     processingRef.current = true;
 
     try {
@@ -294,8 +417,10 @@ export default function GhanaCardScanner() {
       if (canvasRef.current) {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext("2d");
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+        if (canvas.width > 0 && canvas.height > 0) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
         if (detections.length > 0) {
           drawDetections(detections, canvasRef, invalidCardDetected);
           checkForAutoCapture(detections);
@@ -312,14 +437,13 @@ export default function GhanaCardScanner() {
         predictions?.dispose?.();
       }
     } catch (err) {
-      console.error("[Smart-Capture] Detection error in detectCard:", err);
-      setStatus("Error detecting card: " + err.message);
+      console.error("[Smart-Capture] Detection error:", err);
+      setStatus("Detection error: " + err.message);
     } finally {
       processingRef.current = false;
     }
   };
 
-  // Auto-capture logic
   const checkForAutoCapture = (detections) => {
     if (!detections || detections.length === 0 || !videoRef.current) {
       setConsecutiveDetections(0);
@@ -328,9 +452,15 @@ export default function GhanaCardScanner() {
     }
 
     const detection = detections[0];
-    const areaRatio =
-      (detection.box.width * detection.box.height) /
-      (videoRef.current.videoWidth * videoRef.current.videoHeight);
+    const videoWidth = videoRef.current.videoWidth;
+    const videoHeight = videoRef.current.videoHeight;
+
+    if (!videoWidth || !videoHeight) {
+      setConsecutiveDetections(0);
+      return;
+    }
+
+    const areaRatio = (detection.box.width * detection.box.height) / (videoWidth * videoHeight);
 
     const isValidCard =
       detection.confidence > confidenceThreshold &&
@@ -340,28 +470,23 @@ export default function GhanaCardScanner() {
       areaRatio < maxDetectionAreaRatio;
 
     if (!isValidCard) {
-      console.log("[Smart-Capture] Card is invalid or far away");
       setInvalidCardDetected(true);
-      setStatus("Card may be too far - Please move closer to the camera");
+      setStatus("Position Ghana Card clearly in the frame");
       setConsecutiveDetections(0);
       return;
     }
 
     setInvalidCardDetected(false);
-    const distanceAdjustedScore = Math.min(
-      1,
-      detection.alignmentScore * (0.5 + 0.5 * (areaRatio / 0.3))
-    );
+    const alignmentScore = detection.alignmentScore;
 
-    if (distanceAdjustedScore > 0.4) {
+    if (alignmentScore > (isMobile ? 0.3 : 0.4)) {
       setConsecutiveDetections((prev) => {
         const next = prev + 1;
-        setStatus(
-          `Ghana Card detected - Holding steady: ${next}/${minConsecutiveDetections}`
-        );
+        setStatus(`Ghana Card detected - Hold steady: ${next}/${minConsecutiveDetections}`);
 
         if (next >= minConsecutiveDetections) {
-          captureCard( // This is imported from @/utilities/captureUtilities
+          console.log("[Smart-Capture] Auto-capturing card...");
+          captureCard(
             detection,
             videoRef,
             captureRef,
@@ -369,108 +494,88 @@ export default function GhanaCardScanner() {
             setCaptureMessage,
             setSubmitEnabled
           );
-          setStatus("Ghana Card captured successfully");
+          setStatus("Ghana Card captured successfully!");
+          isDetectionActiveRef.current = false;
+
+          // Clear detection canvas
+          if (canvasRef.current) {
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext("2d");
+            if (canvas.width > 0 && canvas.height > 0) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+          }
           return 0;
         }
         return next;
       });
     } else {
       setConsecutiveDetections((prev) => Math.max(0, prev - 1));
-      setStatus("Position Ghana Card properly in the frame");
+      setStatus("Align Ghana Card better for capture");
     }
   };
 
-  // Send card to backend and notify parent
   const sendToBackend = async () => {
-    console.log(
-      "[Smart-Capture] Preparing to send captured card to backend..."
-    );
+    console.log("[Smart-Capture] Sending to backend...");
+    
     if (!captureRef.current || captureRef.current.width === 0 || captureRef.current.height === 0) {
-      console.log("[Smart-Capture] No valid card captured (or canvas is empty) - cannot send to backend");
-      setStatus("No valid card captured yet or captured image is empty.");
-      setCaptureMessage("No valid card captured to submit.");
+      setStatus("No valid card captured yet.");
+      setCaptureMessage("No card captured to submit.");
       return;
     }
 
-    setStatus("Sending card to backend for verification...");
-    console.log("[Smart-Capture] Converting canvas to base64 (PNG format)...");
+    setStatus("Submitting for verification...");
 
     try {
-      // Get base64 image from canvas - CHANGED TO PNG
-      const base64Image = captureRef.current.toDataURL("image/png");
-      // ADDED for inspection: Log the base64 string. You can copy this and paste it into an online base64 viewer to see the exact image.
-      console.log("[Smart-Capture] Base64 for OCR (copy and view in a base64 image viewer):", base64Image.substring(0, 100) + "..."); // Log snippet
-
-
-      // Extract just the base64 data part (remove the data:image/png;base64, prefix)
+      const base64Image = captureRef.current.toDataURL("image/jpeg", 0.85);
       const base64Data = base64Image.split(",")[1];
-
+      
       if (!base64Data) {
-        console.error("[Smart-Capture] Failed to extract base64 data from image string.");
-        setStatus("Error preparing image for sending.");
-        setCaptureMessage("Error preparing image.");
+        setStatus("Error preparing image.");
         return;
       }
 
-      // Prepare the payload
-      const payload = {
-        card_front: base64Data,
-      };
-
-      console.log(
-        `[Smart-Capture] Sending to backend API with verification_id: ${verification_id}`
-      );
-
+      const payload = { card_front: base64Data };
+      
       const response = await fetch(
         `https://staging-videokyc.agregartech.com/api/v1/video-kyc/verifications/${verification_id}/verify-card-front/`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }
       );
 
       if (!response.ok) {
-        // Try to get more detailed error from backend response
-        let errorData;
-        try {
-            errorData = await response.json();
-        } catch (e) {
-            // If response is not JSON or some other error
-            throw new Error(`HTTP error! Status: ${response.status}, Response not JSON or unreadable.`);
+        let errorData = { message: `HTTP ${response.status}` };
+        try { 
+          errorData = await response.json(); 
+        } catch (e) { 
+          // Ignore parsing errors
         }
-        console.error("[Smart-Capture] Backend error response data:", errorData);
-        throw new Error(`HTTP error! Status: ${response.status}. Message: ${errorData.message || errorData.detail || JSON.stringify(errorData)}`);
+        throw new Error(`Verification failed: ${errorData.message || errorData.detail || 'Unknown error'}`);
       }
 
       const data = await response.json();
-      console.log("[Smart-Capture] Backend response:", data);
+      console.log("[Smart-Capture] Verification successful:", data);
 
-      // Notify parent window of successful capture and verification
-      console.log(
-        "[Smart-Capture] Notifying parent window of successful capture and verification"
-      );
-      window.parent.postMessage(
-        {
-          type: "GHANA_CARD_CAPTURE_SUCCESS",
-          data: {
-            verification_id,
-            verification_type,
-            card_data: data,
+      if (typeof window !== 'undefined' && window.parent) {
+        window.parent.postMessage(
+          {
+            type: "GHANA_CARD_CAPTURE_SUCCESS",
+            data: { verification_id, verification_type, card_data: data },
           },
-        },
-        "*"
-      );
+          "*"
+        );
+      }
 
-      setStatus("Verification submitted successfully!");
-      setCaptureMessage("Card front image successfully verified");
+      setStatus("Verification completed successfully!");
+      setCaptureMessage("Card successfully verified");
       setSubmitEnabled(false);
     } catch (error) {
-      console.error("[Smart-Capture] Error sending to backend:", error);
-      setStatus(`Error sending to backend: ${error.message}`);
-      setCaptureMessage("Error during verification submission");
+      console.error("[Smart-Capture] Backend error:", error);
+      setStatus(`Verification failed: ${error.message}`);
+      setCaptureMessage("Verification failed. Please try again.");
     }
   };
 
@@ -482,7 +587,7 @@ export default function GhanaCardScanner() {
         </h1>
 
         <div className="status-container mb-6">
-          <div className="status text-center font-medium" id="status">
+          <div className={`status text-center font-medium ${isLoading ? 'loading' : ''}`} id="status">
             {status}
           </div>
         </div>
@@ -495,6 +600,7 @@ export default function GhanaCardScanner() {
               className="w-full rounded-lg"
               autoPlay
               playsInline
+              muted
             />
             <canvas
               id="detection-canvas"
@@ -522,9 +628,8 @@ export default function GhanaCardScanner() {
               id="captured-card"
               ref={captureRef}
               className="border-2 border-gray-200 rounded-lg"
-              // Set initial width/height for placeholder, or style with CSS min-height/width
-              width="320" // Example initial width
-              height="202" // Example initial height (maintaining ~1.585 ratio)
+              width="320"
+              height="202"
             />
           </div>
           <div className="capture-info text-center">
@@ -536,7 +641,7 @@ export default function GhanaCardScanner() {
               disabled={!submitEnabled}
               onClick={sendToBackend}
             >
-              Submit
+              {submitEnabled ? 'Submit for Verification' : 'Waiting for Capture...'}
             </button>
           </div>
         </div>
@@ -546,7 +651,7 @@ export default function GhanaCardScanner() {
             By proceeding, you consent to processing your personal data
             according to our{" "}
             <Link
-              href="/https://videokyc-frontend2.vercel.app/consent"
+              href="https://videokyc-frontend2.vercel.app/consent"
               className="footer-link"
             >
               Consent to Personal Data Processing Document

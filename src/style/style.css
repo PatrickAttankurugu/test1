@@ -1,14 +1,14 @@
-/* Color Variables */
+
 :root {
-  --primary-color: #007bff;
+  --primary-color: #245c94;
   --success-color: #28a745;
   --danger-color: #dc3545;
-  --dark-color: #343a40;
+  --warning-color: #ffc107;
+  --dark-color: #636a72;
   --light-color: #f8f9fa;
   --border-color: #dee2e6;
 }
 
-/* Base Styles */
 * {
   margin: 0;
   padding: 0;
@@ -19,20 +19,24 @@ body {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   line-height: 1.6;
   color: #333;
-  background-color: #f5f5f5;
+  background-color: var(--light-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Container - Enhanced for Mobile */
 .container {
   max-width: 900px;
   margin: 0 auto;
   padding: 20px;
 }
 
-/* Typography */
+/* Typography - Original with Mobile Improvements */
 h1 {
   text-align: center;
   margin-bottom: 20px;
   color: var(--dark-color);
+  font-size: 2rem;
 }
 
 h2 {
@@ -45,7 +49,7 @@ h3 {
   color: var(--dark-color);
 }
 
-/* Status Display */
+/* Status Display - Original Design */
 .status-container {
   display: flex;
   justify-content: space-between;
@@ -58,6 +62,8 @@ h3 {
 
 .status {
   font-weight: bold;
+  text-align: center;
+  width: 100%;
 }
 
 .model-status {
@@ -65,12 +71,12 @@ h3 {
   font-size: 0.9rem;
 }
 
-/* Camera Component */
+/* Camera Component - Original with Mobile Enhancements */
 .camera-container {
   margin-bottom: 30px;
 }
 
-/* Video Panel */
+/* Video Panel - Enhanced for Mobile */
 #video-container {
   position: relative;
   width: 100%;
@@ -80,12 +86,15 @@ h3 {
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   background-color: #000;
+  /* Add aspect ratio for better mobile handling */
+  aspect-ratio: 16/9;
 }
 
 #webcam {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
+  object-fit: cover;
 }
 
 #detection-canvas {
@@ -95,8 +104,10 @@ h3 {
   width: 100%;
   height: 100%;
   z-index: 15;
+  pointer-events: none;
 }
 
+/* Guide Overlay - Original Design */
 .guide-overlay {
   position: absolute;
   top: 0;
@@ -118,7 +129,7 @@ h3 {
   aspect-ratio: 1.585 / 1;
 }
 
-/* Controls */
+/* Controls - Enhanced for Mobile */
 .controls {
   display: flex;
   justify-content: center;
@@ -126,6 +137,7 @@ h3 {
   margin-bottom: 20px;
 }
 
+/* Invalid Card Warning - Original Design */
 .invalid-card-warning {
   color: red;
   font-weight: bold;
@@ -137,7 +149,7 @@ h3 {
   border-radius: 4px;
 }
 
-/* Buttons */
+/* Buttons - Original Design with Mobile Touch Improvements */
 .btn {
   padding: 10px 20px;
   background-color: var(--primary-color);
@@ -147,6 +159,7 @@ h3 {
   cursor: pointer;
   font-size: 16px;
   transition: background-color 0.2s;
+  min-height: 44px; /* Touch-friendly minimum */
 }
 
 .btn:hover {
@@ -159,13 +172,12 @@ h3 {
   opacity: 0.65;
 }
 
-/* Results Display */
+/* Results Display - Original Design */
 .result-container {
   margin-bottom: 30px;
   padding: 20px;
   background-color: white;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 #captured-card {
@@ -186,7 +198,7 @@ h3 {
 
 #capture-status {
   font-size: 16px;
-  color: #6c757d;
+  color: #b0b8c0;
 }
 
 .send-btn {
@@ -197,7 +209,7 @@ h3 {
   background-color: #218838;
 }
 
-/* Instructions Section */
+/* Instructions Section - Original */
 .instructions {
   padding: 20px;
   background-color: white;
@@ -213,14 +225,14 @@ h3 {
   margin-bottom: 8px;
 }
 
-/* Status Colors */
+/* Status Colors - Original */
 .status-loading { color: #6c757d; }
 .status-success { color: var(--success-color); }
 .status-error { color: var(--danger-color); }
 .status-warning { color: #ffc107; }
 .status-active { color: var(--primary-color); }
 
-/* Submit Button */
+/* Submit Button - Original Design */
 .submit-button {
   width: 100%;
   padding: 1rem;
@@ -232,6 +244,7 @@ h3 {
   border: none;
   cursor: pointer;
   font-size: 1rem;
+  min-height: 44px; /* Touch-friendly */
 }
 
 .submit-button:hover:not(:disabled) {
@@ -243,7 +256,7 @@ h3 {
   cursor: not-allowed;
 }
 
-/* Footer */
+/* Footer - Original Design */
 .footer {
   margin-top: auto;
   padding-top: 3rem;
@@ -265,6 +278,8 @@ h3 {
   color: #245c94;
   font-weight: 500;
   text-decoration: underline;
+  padding: 0.25rem;
+  margin: -0.25rem;
 }
 
 .footer-link:hover {
@@ -290,7 +305,7 @@ h3 {
   height: auto;
 }
 
-/* Utility Classes */
+/* Utility Classes - Original */
 .text-center { text-align: center; }
 .min-h-screen { min-height: 100vh; }
 .bg-white { background-color: white; }
@@ -321,14 +336,25 @@ h3 {
 .border-2 { border-width: 2px; }
 .border-gray-200 { border-color: #e5e7eb; }
 
-/* Media Queries */
-@media (min-width: 768px) {
-  .md\:p-8 { padding: 2rem; }
-  .md\:text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
-}
+/* MOBILE RESPONSIVE IMPROVEMENTS - New additions only */
 
-@media (max-width: 768px) {
-  .container { padding: 15px; }
+/* Mobile-first responsive breakpoints */
+@media (max-width: 480px) {
+  .container { 
+    padding: 15px; 
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+  }
+  
+  #video-container {
+    aspect-ratio: 4/3; /* Better for mobile screens */
+  }
+  
+  .card-guide {
+    width: 85%; /* Slightly bigger guide for mobile */
+  }
   
   .controls {
     flex-direction: column;
@@ -336,12 +362,169 @@ h3 {
     gap: 10px;
   }
   
-  .btn { width: 100%; }
+  .btn { 
+    width: 100%; 
+  }
   
   .capture-info {
     flex-direction: column;
     gap: 15px;
   }
   
-  .send-btn { width: 100%; }
+  .send-btn { 
+    width: 100%; 
+  }
+  
+  /* Make status text more readable on mobile */
+  .status {
+    font-size: 0.9rem;
+  }
+  
+  /* Improve footer spacing on mobile */
+  .footer {
+    padding-top: 2rem;
+  }
+  
+  .footer-text {
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+  .container { 
+    padding: 18px; 
+  }
+  
+  h1 {
+    font-size: 1.75rem;
+  }
+  
+  #video-container {
+    aspect-ratio: 16/10; /* Tablet friendly */
+  }
+}
+
+@media (min-width: 769px) {
+  .container {
+    padding: 20px;
+  }
+  
+  h1 {
+    font-size: 2rem;
+  }
+  
+  #video-container {
+    aspect-ratio: 16/9; /* Desktop aspect ratio */
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .btn, .submit-button {
+    min-height: 44px; /* iOS recommended minimum touch target */
+  }
+  
+  .footer-link {
+    padding: 0.5rem;
+    margin: -0.5rem;
+  }
+  
+  /* Prevent zoom on input focus */
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+/* Landscape mobile optimization */
+@media (max-width: 768px) and (orientation: landscape) {
+  #video-container {
+    aspect-ratio: 16/9;
+    max-height: 50vh; /* Prevent video from taking full height in landscape */
+  }
+  
+  .container {
+    padding: 10px 15px;
+  }
+  
+  h1 {
+    margin-bottom: 10px;
+    font-size: 1.5rem;
+  }
+  
+  .camera-container {
+    margin-bottom: 15px;
+  }
+  
+  .result-container {
+    margin-bottom: 15px;
+  }
+}
+
+/* High DPI screen optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+  #video-container {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+}
+
+/* Performance optimizations - Original */
+#video-container, #webcam, #detection-canvas {
+  will-change: transform;
+}
+
+.submit-button {
+  will-change: transform, box-shadow;
+}
+
+/* Dark mode support - if needed */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+  }
+  
+  .result-container, .instructions {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+  }
+  
+  #captured-card {
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
+  }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Loading animation - Original preserved */
+.loading {
+  position: relative;
+}
+
+.loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
